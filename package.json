@@ -1,0 +1,10 @@
+{
+  "name": "pairbeam-helper",
+  "version": "1.0.0",
+  "description": "Local helper that lets Pairbeam lock the screen, switch apps, and control media playback.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT"
+}
