@@ -153,6 +153,7 @@
     <div class="code-display">
       <div class="label">Pairing code</div>
       <div class="code" id="host-code">…</div>
+      <button class="ghost-btn" id="copy-code-btn" onclick="copyCode()">Copy code</button>
     </div>
     <div class="status-row"><span class="led" id="host-led"></span><span id="host-status">Starting session…</span></div>
     <div class="log" id="host-log"></div>
@@ -215,6 +216,18 @@ function log(el, msg){
   el.prepend(line);
 }
 
+function copyCode(){
+  const codeEl = document.getElementById('host-code');
+  const text = codeEl.textContent.trim();
+  if(!text || text === '…') return;
+  navigator.clipboard.writeText(text).then(()=>{
+    const btn = document.getElementById('copy-code-btn');
+    const original = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(()=> btn.textContent = original, 1200);
+  }).catch(()=> toast('Could not copy — select the code manually'));
+}
+
 /* ---------- HOST (laptop) ---------- */
 let hostPeer, hostConn;
 const HELPER_URL = 'http://localhost:5678'; // optional local helper, see helper/server.js
@@ -223,9 +236,18 @@ function shortId(){
   return 'pb-' + Math.random().toString(36).slice(2,8);
 }
 
+const ICE_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+  ]
+};
+
 function startHost(){
   const id = shortId();
-  hostPeer = new Peer(id, { debug: 1 });
+  hostPeer = new Peer(id, { debug: 2, config: ICE_CONFIG });
   const codeEl = document.getElementById('host-code');
   const statusEl = document.getElementById('host-status');
   const ledEl = document.getElementById('host-led');
@@ -256,6 +278,19 @@ function startHost(){
     ledEl.classList.add('warn');
     statusEl.textContent = 'Connection error — see log';
     log(logEl, 'Error: ' + err.type);
+  });
+
+  hostPeer.on('disconnected', ()=>{
+    ledEl.classList.add('warn');
+    statusEl.textContent = 'Lost touch with signaling server — reconnecting…';
+    log(logEl, 'Disconnected from server, attempting to reconnect…');
+    hostPeer.reconnect();
+  });
+
+  hostPeer.on('close', ()=>{
+    ledEl.classList.add('warn');
+    statusEl.textContent = 'Session closed — reload the page for a new code';
+    log(logEl, 'Peer session closed permanently.');
   });
 }
 
@@ -309,11 +344,20 @@ function connectToHost(){
   statusRow.style.display = 'flex';
   statusEl.textContent = 'Connecting…';
 
-  phonePeer = new Peer(undefined, { debug: 1 });
+  phonePeer = new Peer(undefined, { debug: 2, config: ICE_CONFIG });
   phonePeer.on('open', ()=>{
     phoneConn = phonePeer.connect(code, { reliable: true });
 
+    const connectTimeout = setTimeout(()=>{
+      if(!(phoneConn && phoneConn.open)){
+        ledEl.classList.add('warn');
+        statusEl.textContent = 'Timed out — check the code, or laptop may be behind a strict firewall';
+        btn.disabled = false;
+      }
+    }, 12000);
+
     phoneConn.on('open', ()=>{
+      clearTimeout(connectTimeout);
       ledEl.classList.add('on');
       statusEl.textContent = 'Connected';
       document.getElementById('phone-connect').classList.add('hidden');
