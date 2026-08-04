@@ -184,6 +184,8 @@
         <button onclick="send('zoom-out')"><span class="icon">－</span>Zoom out</button>
         <button onclick="send('scroll-up')"><span class="icon">↑</span>Scroll up</button>
         <button onclick="send('scroll-down')"><span class="icon">↓</span>Scroll down</button>
+        <button onclick="send('move-left')"><span class="icon">←</span>Move left</button>
+        <button onclick="send('move-right')"><span class="icon">→</span>Move right</button>
         <button onclick="send('switch-app')"><span class="icon">⇄</span>Switch app</button>
         <button onclick="send('play-pause')"><span class="icon">⏯</span>Play / pause</button>
         <button class="full danger" onclick="send('lock')"><span class="icon">🔒</span>Lock laptop</button>
@@ -272,6 +274,17 @@ function startHost(){
       statusEl.textContent = 'Phone disconnected';
       log(logEl, 'Phone disconnected.');
     });
+
+    const pc = conn.peerConnection;
+    if(pc){
+      pc.oniceconnectionstatechange = ()=>{
+        log(logEl, 'ICE state: ' + pc.iceConnectionState);
+        if(pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected'){
+          ledEl.classList.add('warn');
+          statusEl.textContent = 'Network path failed — likely blocked by a firewall';
+        }
+      };
+    }
   });
 
   hostPeer.on('error', (err)=>{
@@ -303,16 +316,28 @@ function handleCommand(data, logEl){
     case 'zoom-in':
       zoomLevel = Math.min(zoomLevel + 10, 300);
       document.body.style.zoom = (zoomLevel / 100);
+      forwardToHelper(action, logEl);
       break;
     case 'zoom-out':
       zoomLevel = Math.max(zoomLevel - 10, 30);
       document.body.style.zoom = (zoomLevel / 100);
+      forwardToHelper(action, logEl);
       break;
     case 'scroll-up':
       window.scrollBy({ top: -400, behavior: 'smooth' });
+      forwardToHelper(action, logEl);
       break;
     case 'scroll-down':
       window.scrollBy({ top: 400, behavior: 'smooth' });
+      forwardToHelper(action, logEl);
+      break;
+    case 'move-left':
+      window.scrollBy({ left: -400, behavior: 'smooth' });
+      forwardToHelper(action, logEl);
+      break;
+    case 'move-right':
+      window.scrollBy({ left: 400, behavior: 'smooth' });
+      forwardToHelper(action, logEl);
       break;
     case 'switch-app':
     case 'lock':
@@ -354,7 +379,20 @@ function connectToHost(){
         statusEl.textContent = 'Timed out — check the code, or laptop may be behind a strict firewall';
         btn.disabled = false;
       }
-    }, 12000);
+    }, 20000);
+
+    const pc = phoneConn.peerConnection;
+    if(pc){
+      pc.oniceconnectionstatechange = ()=>{
+        statusEl.textContent = 'Negotiating (' + pc.iceConnectionState + ')…';
+        if(pc.iceConnectionState === 'failed'){
+          clearTimeout(connectTimeout);
+          ledEl.classList.add('warn');
+          statusEl.textContent = 'Network path failed — a firewall is blocking the connection';
+          btn.disabled = false;
+        }
+      };
+    }
 
     phoneConn.on('open', ()=>{
       clearTimeout(connectTimeout);
