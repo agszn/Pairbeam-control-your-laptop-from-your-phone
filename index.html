@@ -178,7 +178,7 @@
     <div id="phone-pad" class="hidden">
       <div class="brand"><span class="dot"></span><span>Pairbeam · Connected</span></div>
       <h1>Remote</h1>
-      <p class="sub">Commands are sent to your laptop instantly.</p>
+      <p class="sub">Commands are sent to your laptop instantly. These control the Pairbeam tab on your laptop — a browser page can't reach outside itself, so nothing beyond this tab responds.</p>
       <div class="pad">
         <button onclick="send('zoom-in')"><span class="icon">＋</span>Zoom in</button>
         <button onclick="send('zoom-out')"><span class="icon">－</span>Zoom out</button>
@@ -186,9 +186,6 @@
         <button onclick="send('scroll-down')"><span class="icon">↓</span>Scroll down</button>
         <button onclick="send('move-left')"><span class="icon">←</span>Move left</button>
         <button onclick="send('move-right')"><span class="icon">→</span>Move right</button>
-        <button onclick="send('switch-app')"><span class="icon">⇄</span>Switch app</button>
-        <button onclick="send('play-pause')"><span class="icon">⏯</span>Play / pause</button>
-        <button class="full danger" onclick="send('lock')"><span class="icon">🔒</span>Lock laptop</button>
       </div>
     </div>
   </div>
@@ -232,7 +229,6 @@ function copyCode(){
 
 /* ---------- HOST (laptop) ---------- */
 let hostPeer, hostConn;
-const HELPER_URL = 'http://localhost:5678'; // optional local helper, see helper/server.js
 
 function shortId(){
   return 'pb-' + Math.random().toString(36).slice(2,8);
@@ -316,41 +312,24 @@ function handleCommand(data, logEl){
     case 'zoom-in':
       zoomLevel = Math.min(zoomLevel + 10, 300);
       document.body.style.zoom = (zoomLevel / 100);
-      forwardToHelper(action, logEl);
       break;
     case 'zoom-out':
       zoomLevel = Math.max(zoomLevel - 10, 30);
       document.body.style.zoom = (zoomLevel / 100);
-      forwardToHelper(action, logEl);
       break;
     case 'scroll-up':
       window.scrollBy({ top: -400, behavior: 'smooth' });
-      forwardToHelper(action, logEl);
       break;
     case 'scroll-down':
       window.scrollBy({ top: 400, behavior: 'smooth' });
-      forwardToHelper(action, logEl);
       break;
     case 'move-left':
       window.scrollBy({ left: -400, behavior: 'smooth' });
-      forwardToHelper(action, logEl);
       break;
     case 'move-right':
       window.scrollBy({ left: 400, behavior: 'smooth' });
-      forwardToHelper(action, logEl);
-      break;
-    case 'switch-app':
-    case 'lock':
-    case 'play-pause':
-      forwardToHelper(action, logEl);
       break;
   }
-}
-
-function forwardToHelper(action, logEl){
-  fetch(HELPER_URL + '/' + action, { method: 'POST', mode: 'cors' })
-    .then(()=> log(logEl, 'Helper executed: ' + action))
-    .catch(()=> log(logEl, action + ' needs the local helper app — see helper/README. Not running or blocked.'));
 }
 
 /* ---------- PHONE (controller) ---------- */
