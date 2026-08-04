@@ -72,17 +72,32 @@
   .nb-title-block{display:flex; flex-direction:column; padding-bottom:8px;}
   .nb-title{font-size:15px; font-weight:500; color:#202124;}
   .nb-menu{display:flex; gap:16px; font-size:12.5px; color:#5f6368; margin-top:2px;}
-  .nb-pair-status{margin-left:auto; display:flex; align-items:center; gap:8px; padding-bottom:8px;}
+  .pair-dropdown{position:relative; margin-left:auto;}
+  .pair-toggle{
+    font-family:var(--mono); font-size:12.5px; font-weight:600; color:#fff;
+    padding:7px 14px; border-radius:20px; border:none; cursor:pointer;
+    transition:background .2s ease;
+  }
+  .pair-toggle.disconnected{background:#c5221f;}
+  .pair-toggle.connected{background:#188038;}
+  .pair-panel{
+    position:absolute; right:0; top:calc(100% + 8px); z-index:50;
+    background:#fff; border:1px solid #e8eaed; border-radius:12px;
+    box-shadow:0 12px 32px rgba(0,0,0,0.18); padding:16px; width:220px;
+    text-align:center;
+  }
+  .pair-label{font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:#9aa0a6; margin-bottom:4px;}
+  .pair-code{font-family:var(--mono); font-size:20px; color:#1a73e8; margin-bottom:10px; word-break:break-all;}
+  .ghost-btn-light{width:100%; padding:8px; border-radius:8px; border:1px solid #dadce0; background:#fff; color:#3c4043; font-size:12.5px; cursor:pointer; margin-bottom:12px;}
+  #qr-slot{display:flex; justify-content:center;}
   #qr-slot img{display:block; border-radius:6px; border:1px solid #e8eaed;}
 
-  .nb-conn-banner{
-    text-align:center; padding:8px; font-size:14px; font-weight:600;
-    font-family:var(--sans); color:#fff; background:#5f6368;
-    transition:background .25s ease;
+  .text-cell-body{
+    grid-column:2; padding:10px 14px; margin-bottom:18px;
+    font-family:var(--sans); font-size:calc(15px * var(--code-zoom)); color:#202124;
+    white-space:pre-wrap; line-height:1.6; outline:none; border-radius:6px;
   }
-  .nb-conn-banner.waiting{background:#5f6368;}
-  .nb-conn-banner.connected{background:#188038;}
-  .nb-conn-banner.warn{background:#c5221f;}
+  .text-cell-body:focus{background:#f8f9fa;}
 
   .spotlight{
     position:fixed; width:36px; height:36px; border-radius:50%;
@@ -112,10 +127,6 @@
   }
   .cell:hover{border-color:#e8eaed;}
   .run-col{display:flex; flex-direction:column; align-items:center; padding-top:10px; gap:4px;}
-  .run-btn{
-    width:30px; height:30px; border-radius:50%; border:none; cursor:default;
-    background:#f8f9fa; color:#5f6368; display:flex; align-items:center; justify-content:center; font-size:13px;
-  }
   .cell-idx{font-family:var(--mono); font-size:10.5px; color:#9aa0a6;}
 
   .editor-wrap{
@@ -193,8 +204,20 @@
         <button onclick="send('jump-top')"><span class="icon">⤒</span>Jump to top</button>
         <button onclick="send('jump-bottom')"><span class="icon">⤓</span>Jump to bottom</button>
         <button onclick="send('add-cell')"><span class="icon">✚</span>Add cell</button>
+        <button onclick="enterTextMode()"><span class="icon">✎</span>Edit text</button>
         <button onclick="enterPointerMode()"><span class="icon">🔴</span>Pointer</button>
       </div>
+    </div>
+
+    <div id="phone-textmode" class="hidden">
+      <h1>Add a text note</h1>
+      <p class="sub">This appears as a new text cell on the projected notebook.</p>
+      <div class="field">
+        <label>Text</label>
+        <textarea id="phone-text-input" rows="6" style="width:100%; padding:14px; border-radius:10px; border:1px solid #243029; background:#06090a; color:#e9f2ec; font-family:var(--sans); font-size:15px; resize:vertical;"></textarea>
+      </div>
+      <button class="primary-btn" onclick="sendTextCell()">Add to notebook</button>
+      <button class="ghost-btn" onclick="exitTextMode()">← Back to remote</button>
     </div>
 
     <div id="phone-pointer" class="hidden">
@@ -215,18 +238,19 @@
         <div class="nb-title">Lecture_04_Functions.ipynb</div>
         <div class="nb-menu"><span>File</span><span>Edit</span><span>View</span><span>Insert</span><span>Runtime</span><span>Tools</span><span>Help</span></div>
       </div>
-      <div class="nb-pair-status">
-        <div id="qr-slot"></div>
-      </div>
     </div>
-    <div class="nb-conn-banner" id="nb-conn-banner">Starting…</div>
     <div class="nb-toolbar">
       <button onclick="addCell()">+ Code</button>
-      <button>+ Text</button>
-      <span style="margin-left:auto; font-family:var(--mono); font-size:12px; color:#5f6368;">
-        Pairing code: <strong id="nb-code" style="color:#1a73e8;">…</strong>
-        <button class="ghost-btn" style="width:auto; display:inline; margin-left:8px; padding:4px 10px;" onclick="copyCode()">Copy</button>
-      </span>
+      <button onclick="addTextCell('')">+ Text</button>
+      <div class="pair-dropdown">
+        <button class="pair-toggle disconnected" id="pair-toggle" onclick="togglePairPanel()">● Not connected</button>
+        <div class="pair-panel hidden" id="pair-panel">
+          <div class="pair-label">Pairing code</div>
+          <div class="pair-code" id="nb-code">…</div>
+          <button class="ghost-btn-light" onclick="copyCode()">Copy code</button>
+          <div id="qr-slot"></div>
+        </div>
+      </div>
     </div>
 
     <div class="nb-body" id="nb-body">
@@ -275,18 +299,18 @@ let hostPeer;
 function startHost(){
   const id = shortId();
   hostPeer = new Peer(id, { debug: 2, config: ICE_CONFIG });
-  const banner = document.getElementById('nb-conn-banner');
+  const toggle = document.getElementById('pair-toggle');
   const codeEl = document.getElementById('nb-code');
   const qrSlot = document.getElementById('qr-slot');
 
-  function setBanner(text, state){
-    banner.textContent = text;
-    banner.className = 'nb-conn-banner ' + state;
+  function setPairState(text, connected){
+    toggle.textContent = text;
+    toggle.className = 'pair-toggle ' + (connected ? 'connected' : 'disconnected');
   }
 
   hostPeer.on('open', (openedId)=>{
     codeEl.textContent = openedId;
-    setBanner('Waiting for phone…', 'waiting');
+    setPairState('● Not connected', false);
 
     // QR code links straight into the phone-connect flow — scan and go,
     // no typing required.
@@ -299,26 +323,30 @@ function startHost(){
 
   hostPeer.on('connection', (conn)=>{
     conn.on('open', ()=>{
-      setBanner('🟢 Phone connected', 'connected');
+      setPairState('● Phone connected', true);
     });
     conn.on('data', handleCommand);
     conn.on('close', ()=>{
-      setBanner('Phone disconnected', 'waiting');
+      setPairState('● Not connected', false);
     });
     const pc = conn.peerConnection;
     if(pc){
       pc.oniceconnectionstatechange = ()=>{
         if(pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected'){
-          setBanner('⚠ Network path failed', 'warn');
+          setPairState('● Not connected', false);
         }
       };
     }
   });
 
   hostPeer.on('disconnected', ()=> hostPeer.reconnect());
-  hostPeer.on('error', (err)=>{
-    setBanner('⚠ Error: ' + err.type, 'warn');
+  hostPeer.on('error', ()=>{
+    setPairState('● Not connected', false);
   });
+}
+
+function togglePairPanel(){
+  document.getElementById('pair-panel').classList.toggle('hidden');
 }
 
 function copyCode(){
@@ -359,6 +387,11 @@ function handleCommand(data){
       const cells = document.querySelectorAll('.cell');
       const last = cells[cells.length - 1];
       if(last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      break;
+    }
+    case 'add-text': {
+      const cell = addTextCell(data.text || '');
+      cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
       break;
     }
     case 'jump-top':
@@ -417,7 +450,6 @@ function addCell(code){
   cell.className = 'cell';
   cell.innerHTML = `
     <div class="run-col">
-      <button class="run-btn">▶</button>
       <span class="cell-idx">[${cellCount}]</span>
     </div>
     <div class="editor-wrap">
@@ -438,6 +470,20 @@ function addCell(code){
   }
   textarea.addEventListener('input', sync);
   sync();
+}
+
+function addTextCell(text){
+  const body = document.getElementById('nb-body');
+  const cell = document.createElement('div');
+  cell.className = 'cell';
+  cell.innerHTML = `
+    <div class="run-col"><span class="cell-idx">≡</span></div>
+    <div class="text-cell-body" contenteditable="true"></div>
+  `;
+  const bodyEl = cell.querySelector('.text-cell-body');
+  bodyEl.textContent = text || '';
+  body.appendChild(cell);
+  return cell;
 }
 
 function resizeAllEditors(){
@@ -537,6 +583,29 @@ function send(action){
   if(phoneConn && phoneConn.open){
     phoneConn.send({ action });
     if(navigator.vibrate) navigator.vibrate(12);
+  } else {
+    toast('Not connected');
+  }
+}
+
+/* ---------- text note mode ---------- */
+function enterTextMode(){
+  document.getElementById('phone-pad').classList.add('hidden');
+  document.getElementById('phone-textmode').classList.remove('hidden');
+}
+function exitTextMode(){
+  document.getElementById('phone-textmode').classList.add('hidden');
+  document.getElementById('phone-pad').classList.remove('hidden');
+}
+function sendTextCell(){
+  const input = document.getElementById('phone-text-input');
+  const text = input.value.trim();
+  if(!text){ toast('Type something first'); return; }
+  if(phoneConn && phoneConn.open){
+    phoneConn.send({ action: 'add-text', text });
+    input.value = '';
+    toast('Sent to notebook');
+    exitTextMode();
   } else {
     toast('Not connected');
   }
